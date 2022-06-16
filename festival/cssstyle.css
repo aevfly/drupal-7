@@ -1,0 +1,24 @@
+/* style */
+
+.publishedby{
+float: right;
+margin-right: 20px;
+}
+.squareby,
+.squarehp{
+width: 10px;
+height: 10px;
+display: block;
+background: black;
+float: left;
+margin-top: 6px;
+margin-right: 4px;
+}
+
+.squarehp {
+background: rgba(118, 197, 90, 0.3) none repeat scroll 0% 0%;
+}
+
+.squareby{
+background: rgba(42, 143, 195, 0.3) none repeat scroll 0% 0%;
+}

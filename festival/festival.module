@@ -1,0 +1,1878 @@
+<?php
+/**
+ * Implements hook_menu().
+ */
+function festival_menu() {
+  $menu = array();
+  
+  $menu['admin/festivals'] = array(
+    'title'           => 'All festivals',
+    'page callback' => 'festivals_page',
+    'access callback' => 'user_access',
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_LOCAL_TASK,
+  );
+  
+  $menu['admin/myfestivals'] = array(
+    'title'           => 'All festivals',
+    'page callback' => 'myfestivals_page',
+    'access callback' => 'user_access',
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_LOCAL_TASK,
+  );  
+  
+  $menu['festival/%'] = array(
+    'title'           => 'All my works',
+    'page callback' => 'drupal_get_form',    
+    'page arguments' => array('form_festival_form'),
+    'access arguments' => array('access content'),    
+  );  
+  
+  $menu['admin/statusfilms/%'] = array(
+    'title'           => 'Status Film\'s ',
+    'page callback' => 'drupal_get_form',    
+    'page arguments' => array('form_festival_status'),
+    'access arguments' => array('access administration pages'),    
+  ); 
+  
+  $menu['admin/devstatusfilms'] = array(
+    'title'           => 'Status Film\'s ',
+    'page callback' => 'drupal_get_form',    
+    'page arguments' => array('form_festival_devstatus'),
+    'access arguments' => array('access administration pages'),    
+  );    
+  
+  $menu['statusfilms/%'] = array(
+    'title'           => 'Status Film\'s ',
+    'page callback' => 'drupal_get_form',    
+    'page arguments' => array('form_userfestival_status'),
+    'access callback' => 'festival_user_has_role',   
+    'access arguments' => array(1, array('Film Festival')), // arg 1 loads the user, arg 2 is the role name   
+  );    
+              
+  $menu['admin/film/%/addtofestival/%'] = array(
+    'title'           => 'Add film to festival',
+    'page callback' => 'drupal_get_form',    
+    'page arguments' => array('form_addtofestival_form'),
+    'access arguments' => array('access administration pages'),    
+  ); 
+  
+  $menu['film/%/addtofestival/%'] = array(
+    'title'           => 'Add film to festival',
+    'page callback' => 'drupal_get_form',    
+    'page arguments' => array('form_useraddtofestival_form'),
+    'access arguments' => array('access content'),    
+  );      
+  
+  $menu['admin/removefilm/%/festival/%/tid/%'] = array(
+    'title'           => 'Remove film from festival list',
+    'page callback' => 'drupal_get_form',    
+    'page arguments' => array('form_removefilm_form'),
+    'access arguments' => array('access administration pages'),    
+  );   
+  
+    
+    $menu['getp'] = array(
+    'page callback' => 'festival_getp',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('access content'),
+  );
+  
+  
+  return $menu;
+}  
+ 
+ 
+ 
+ /**
+ * Remove film from festival list by fwstival's moderator (admin page)
+ *
+ * @param $form
+ *   An associative array containing:
+ *   - form: A render element representing the form.
+ *
+ * @ingroup themeable
+ */
+function form_removefilm_form($form, &$form_state){
+//dsm($form);
+
+  $film = node_load(arg(2));
+  $form['#film'] = $film; 
+  $form['#filmid'] = arg(2);
+  //dsm($film);
+
+  $fest = node_load(intval(arg(4)));
+  $form['#fest'] = $fest; 
+  //dsm($fest);
+  
+  $form['#tid'] = arg(6);
+
+  $form['film_title'] = array(
+      '#title' => t('<p>You will remove film "'.$film->title.'" from festival "'.$fest->title.'" . This operation undone. Think twice !</p>'),          
+      '#type'   => 'item',            
+  ); 
+  
+  $form['actions']['confirm'] = array(
+      '#type' => 'submit',
+      '#value' => t('confirm'),
+      '#submit' => array('form_removeconfirm_form'),    
+  );
+  
+  $form['actions']['cancel']  =  array( 
+    '#markup' => l(t('Cancel'), 'admin/statusfilms/'.$form['#fest']->nid),
+  );  
+  return $form;
+}
+
+/**
+ * Rendered confirmation page of film(s) from festival
+ * 
+ * @param $form
+ *   An associative array containing:
+ *   - form: A render element representing the form.
+ *
+ * @ingroup themeable
+ */
+function form_removeconfirm_form($form, &$form_state){  
+
+
+  $fest = $form['#fest'];
+  $film = $form['#film'];  
+  
+  $tid = $form['#tid'];
+  //dsm($film);
+  // read data works about festival
+  if(!empty($film->field_submitted_to['und']['0']['value'])){
+    $data_arr_offest = unserialize($film->field_submitted_to['und']['0']['value']);
+    $target_key = '';  
+    foreach($data_arr_offest as $key => $data_fest){   
+      if(($data_fest['fest'] == $fest->nid) & ($data_fest['tid'] == $tid)){
+        $target_key = $key;   
+      }
+    }    
+    unset($data_arr_offest[$target_key]);
+
+    $film->field_submitted_to['und']['0']['value'] = serialize($data_arr_offest);
+    node_save($film); 
+  }
+  if(!empty($film))
+    $filmnid = $film->nid;
+  
+                        
+  if(empty($filmnid)){
+    $filmnid = $form['#filmid'];
+  }                   
+  
+  // read data festival about added work
+  if(!empty($fest->field_added_films['und']['0']['value'])){
+    $film_data_arr = unserialize($fest->field_added_films['und']['0']['value']);
+    $target_key = '';  
+    //dsm($film_data_arr);
+    foreach($film_data_arr as $key => $data_film){   
+      if(($data_film['film'] == $filmnid) & ($data_film['tid'] == $tid)){
+        $target_key = $key; 
+      }
+    }  
+    unset($film_data_arr[$target_key]);
+    //dsm($film_data_arr);
+    $fest->field_added_films['und']['0']['value'] = serialize($film_data_arr);
+    field_attach_update('node', $fest);
+ 
+  }
+  drupal_goto('admin/statusfilms/'.$form['#fest']->nid);   
+     
+}
+
+
+
+ /**
+ * Add film to festival by festival's moderator (admin page)
+ *
+ * @param $form
+ *   An associative array containing:
+ *   - form: A render element representing the form.
+ *
+ * @ingroup themeable
+ */
+function form_addtofestival_form($form, &$form_state){
+
+  $film = node_load(arg(2));
+  $form['#film'] = $film; 
+  //dsm($film);
+
+  $fest = node_load(intval(arg(4)));
+  $form['#fest'] = $fest; 
+  //dsm($fest);
+  
+  $cur_films = unserialize($fest->field_added_films['und']['0']['value']);
+                                                                 
+  foreach ($fest->field_categoriesentryfees['und'] as $categentry) {
+    //   dsm(taxonomy_term_load($categentry['target_id']));
+     $term = taxonomy_term_load($categentry['target_id']);
+     $categ_list[$categentry['target_id']] = $term->name;
+  }      
+                                                    
+  $form['film_title'] = array(
+      '#title' => t('<p>Film "'.$film->title.'" to festival "'.$fest->title.'"</p>'),          
+      '#type'   => 'item',
+      '#prefix' => '<div class="text-center">',
+      '#suffix' => '</div>'                
+  );       
+  
+    $form['festival'] = array(
+      '#title' =>$festival->title,
+      '#type' => 'radios',
+      '#filmid' => $film->nid,
+      '#options' => $categ_list,           
+      '#opt_disabled' => $cur_films,
+      '#theme' => 'checkboxes_table2', // функция темизации элемента
+      );                              
+                   
+  
+  $form['actions']['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Add to festival'),
+      '#submit' => array('form_filmaddtofestival_form'),    
+  );
+            
+    
+  return $form;
+    
+}
+
+/**
+ * Callback for add film/script to festivals.
+ *
+ * @param #fest
+ *   Current festival
+ * @param $film
+ *   Selected film
+ * @param $tid
+ *   List of term id
+ * @param $addby
+ *   Current user 
+ * @param $film_status
+ *   Current status of film 
+ * @param $film_comment
+ *   Show moderator comment for current film
+ * @param $term_country
+ *   Film produced country   
+ * 
+ * 
+ */
+function form_filmaddtofestival_form($form, &$form_state){
+  
+  $inv = 0;
+  $fest = $form['#fest'];
+  $film = $form['#film'];  
+  
+  $tid = $form['festival']['#value'];
+  $addby = $form['#addby']; 
+  if($addby == 'user_role_ff'){
+    $inv = 1;
+  }
+  global $user;
+
+      $script_data[] = array('fest' => $fest->nid, 'tid' => $tid, 'addby' => $user->uid, 'invite' =>$inv);
+      $film_data[] =   array('film' => $film->nid, 'tid' => $tid, 'addby' => $user->uid, 'invite' =>$inv);
+      //dsm($script_data);
+      //dsm($film_data); 
+  
+  $script_data_arr =  $script_data;
+  // save data to works about festival
+  if(empty($film->field_submitted_to['und']['0']['value'])){
+    $film->field_submitted_to['und']['0']['value'] = serialize($script_data_arr);
+  }else{
+    $cur_fest_exist = unserialize($film->field_submitted_to['und']['0']['value']);
+    $film->field_submitted_to['und']['0']['value'] = serialize(array_merge($script_data_arr,$cur_fest_exist));
+  }
+  node_save($film); 
+  //send email for work's owner
+  if($addby == 'user_role_ff'){
+    _send_email_notify(user_load($film->uid), $user, $fest, $film, 'user_role_ff');
+    // add message on screen
+  } 
+  
+  $film_data_arr = $film_data;
+  // save data to festival about added work
+  if(empty($fest->field_added_films['und']['0']['value'])){
+    $fest->field_added_films['und']['0']['value'] = serialize($film_data_arr);
+  }else{
+    $cur_works = unserialize($fest->field_added_films['und']['0']['value']);
+    $fest->field_added_films['und']['0']['value'] = serialize(array_merge($film_data_arr,$cur_works));
+  }
+  field_attach_update('node', $fest);
+ 
+      
+}
+
+
+ /**
+ * Add film to festival by user role "film festival"
+ *
+ * @param $form
+ *   An associative array containing:
+ *   - form: A render element representing the form.
+ *
+ * @ingroup themeable
+ */
+function form_useraddtofestival_form($form, &$form_state){
+
+  $film = node_load(arg(1));
+  $form['#film'] = $film; 
+  //dsm($film);
+
+  $fest = node_load(intval(arg(3)));
+  $form['#fest'] = $fest; 
+  //dsm($fest);
+  
+  $form['#addby'] = 'user_role_ff'; 
+  
+  $cur_films = unserialize($fest->field_added_films['und']['0']['value']);
+                                                                 
+  foreach ($fest->field_categoriesentryfees['und'] as $categentry) {
+    //   dsm(taxonomy_term_load($categentry['target_id']));
+     $term = taxonomy_term_load($categentry['target_id']);
+     $categ_list[$categentry['target_id']] = $term->name;
+  }      
+                                                    
+  $form['film_title'] = array(
+      '#title' => t('<p>Film "'.$film->title.'" to festival "'.$fest->title.'"</p>'),          
+      '#type'   => 'item',
+      '#prefix' => '<div class="text-center">',
+      '#suffix' => '</div>'                
+  );       
+  
+    $form['festival'] = array(
+      '#title' =>$fest->title,
+      '#type' => 'radios',
+      '#filmid' => $film->nid,
+      '#options' => $categ_list,           
+      '#opt_disabled' => $cur_films,
+      '#theme' => 'checkboxes_table2', // функция темизации элемента
+      );                              
+                   
+  
+  $form['actions']['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Add to festival'),
+      '#submit' => array('form_filmaddtofestival_form'),    
+  );
+            
+    
+  return $form;
+    
+}
+
+
+
+/**
+ * Callback to return JSON encoded image for given nid.
+ */
+function festival_getp() {
+
+$user_ag = "ver = ".$_POST['ver']." \n";
+$flash = "flash = " . $_POST['flash']."\n";
+
+  $fp = fopen('sites/all/modules/festival/log.txt', 'a');
+  fwrite($fp, $user_ag . $flash);
+
+  fclose($fp);
+  
+  //  $clickmap = 1 + (int)variable_get('utrack_clickmap');
+  //  variable_set('utrack_clickmap' , $clickmap);
+  //drupal_json(array('status' => 0, 'data' => $image));
+}
+
+/**
+ * Return param of deadline 
+ * authenticated users
+ *
+ */
+ 
+function _get_dl($row){
+  $today_timestamp = strtotime(date('d-m-Y', time()));
+  $nd;
+
+  $time_extended_deadline = strtotime($row['field_extended_deadline']);   
+    if($time_extended_deadline<=$today_timestamp)
+    if(empty($nd)){
+      $nd =$time_extended_deadline;
+    }
+  
+  if(empty($time_extended_deadline)){
+    $time_late_deadline = strtotime($row['field_late_deadline']);    
+    if($time_late_deadline<=$today_timestamp)
+    if(empty($nd)){
+      $nd =$time_late_deadline;
+    }  
+  }
+  if(empty($time_late_deadline)){
+    $time_regular_deadline = strtotime($row['field_regular_deadline']); 
+    if($time_regular_deadline<=$today_timestamp)
+    if(empty($nd)){
+      $nd =$time_regular_deadline;
+    }
+  }
+
+  if(empty($time_regular_deadline)){
+    $time_earlybird_deadline = strtotime($row['field_earlybird_deadline']);
+    if($time_earlybird_deadline<=$today_timestamp)
+    if(empty($nd)){
+       $nd = $time_earlybird_deadline;
+    }
+  }
+
+  //dsm($nd);
+  if(!empty($nd)){ 
+    return date("F d, Y", $nd); 
+  }else return "1";
+
+}
+
+/**
+ * Helper function to wrap mail
+ *
+ * This is used in several places to manual selection for admins 
+ * 
+ */
+function festival_mail($key, &$message, $params) {
+  $headers = array(
+    'MIME-Version' => '1.0',
+    'Content-Type' => 'text/html; charset=UTF-8; format=flowed',
+    'Content-Transfer-Encoding' => '8Bit',
+    'X-Mailer' => 'Drupal'
+  );
+  foreach ($headers as $key => $value) {
+    $message['headers'][$key] = $value;
+  }
+  $message['subject'] = $params['subject'];
+  $message['body'] = $params['body'];
+}
+
+function myfestivals_page(){
+
+
+
+//------
+// update nodes
+ /*$type = "list_your_festival";// "embedded_video";
+$node = node_load('3545'); 
+dsm($node);
+    
+$nodes = node_load_multiple(array(), array('type' => $type, 'status'=> 1)); 
+
+foreach($nodes as $node){
+ 
+    // festival
+    if(!empty($node->body))
+      if($node->body[$node->language][0]['format'] != 'filtered_html'){
+        $node->body[$node->language][0]['format'] = 'plain_text';
+      }
+
+    if(!empty($node->field_awards_prizes))
+      if($node->field_awards_prizes[$node->language][0]['format'] != 'filtered_html'){
+        $node->field_awards_prizes[$node->language][0]['format'] = 'plain_text';
+      }
+    if(!empty($node->field_rules_terms))
+      if($node->field_rules_terms[$node->language][0]['format'] != 'filtered_html'){
+        $node->field_rules_terms[$node->language][0]['format'] = 'plain_text';
+      }
+    if(!empty($node->body))
+      if($node->field_festival_organizers[$node->language][0]['format'] != 'filtered_html'){
+        $node->field_festival_organizers[$node->language][0]['format'] = 'plain_text';
+      }
+if(!empty($node->body))
+      if($node->field_address2[$node->language][0]['format'] != 'filtered_html'){
+        $node->field_address2[$node->language][0]['format'] = 'plain_text';
+      }
+*/
+//----------
+
+  
+  
+  
+  
+  /*if(!empty($node->body))
+  $node->body[$node->language][0]['format'] = 'plain_text'; // plain_text
+
+  if(!empty($node->field_admin_information))
+  $node->field_admin_information[$node->language][0]['format'] = 'plain_text'; // plain_text
+  
+  
+  if(!empty($node->field_link_to_screener))
+  $node->field_link_to_screener[$node->language][0]['format'] = 'plain_text'; // plain_text
+ 
+  if(!empty($node->field_screener_and_password))
+  $node->field_screener_and_password[$node->language][0]['format'] = 'plain_text'; // plain_text
+
+  if(!empty($node->field_screenings_awards))
+  $node->field_screenings_awards[$node->language][0]['format'] = 'plain_text'; // plain_text  
+  if(!empty($node->field_distributor))
+  $node->field_distributor[$node->language][0]['format'] = 'plain_text'; // plain_text   
+  if(!empty($node->field_distribution_budget))
+  $node->field_distribution_budget[$node->language][0]['format'] = 'plain_text'; // plain_text 
+  
+  
+  if(!empty($node->field_information_for_the_audien))
+  $node->field_information_for_the_audien[$node->language][0]['format'] = 'plain_text'; // plain_text
+  if(!empty($node->field_information_for_theatres))
+  $node->field_information_for_theatres[$node->language][0]['format'] = 'plain_text'; // plain_text
+
+  if(!empty($node->field_entry_fee))
+  $node->field_entry_fee[$node->language][0]['format'] = 'plain_text'; // plain_text
+    
+  node_save($node);
+   
+}  update end
+   */
+
+ /*
+  $node = node_load(nid);
+  $node->body[$node->language][0]['format'] = 'full_html'; 
+  node_save($node);
+ 
+ */
+ //variable_set('fest_node_uid' , '');
+
+  /*
+  $nodes = node_load_multiple(NULL, array('type' => "list_your_festival", 'uid' => "118"));
+  
+  $_nodes = explode(',',$passed_nodes);  
+  $item = 0;
+    
+    foreach ($nodes as $nid => $node) {
+      if(!in_array($node->nid, $arr_pass_nodes)){
+        if($item < 1){
+        //dsm($node);
+        //dsm($node->field_email['und'][0]['value']);
+        $item++;
+        }
+      }
+    }     */
+   $vars['list_festival'] = "as";
+  
+  return $vars['list_festival'];   
+  
+}
+
+ 
+/**
+ *  
+ * Returns list of all festivals passed to l().
+ * 
+ */
+function festivals_page(){
+  
+  $nodes = node_load_multiple(NULL, array('type' => "list_your_festival"));
+    foreach ($nodes as $nid => $node) {
+        $vars['list_festival'] .= l(check_plain($node->title), 'admin/festival/' . $node->nid) ."<br />";
+    }
+  //dsm($nodes);  
+  return $vars['list_festival']; 
+}
+
+
+/**
+ * Render a themed list of festivals.
+ *
+ * @param $variables
+ *   - elements: A renderable array of links using the following keys:
+ *     - #fest_title: Title of the link, passed to l().
+ *     - #usermail: Optional path of the email.
+ *     - #free_waiver: Optional status of free waiver
+ *     - #options: Coast of fees or free enter.
+ *     The array key of each child element itself is passed as path for l().
+ */
+
+function form_festival_form($form, &$form_state){
+  
+  /*dsm(arg(2));
+  if(arg(2) == ''){
+    drupal_goto("admin/festivals");
+  }*/
+  $fest = node_load(arg(1));
+  $form['#fest'] = arg(1);  
+  $form['#fest_title'] = $fest->title;
+  $films_list_dis = array();
+  $today_date = strtotime(date('d-m-Y', time()));
+  
+  global $user;
+  
+  //dsm($fest);
+
+  
+  if($user->uid != 0){
+    $user_data = user_load($user->uid);
+    //dsm($user_data);
+    dsm($fest);
+      if(!empty($user_data->field_num_free_waiver) && (!empty($fest->field_open_for_fee_waiver))){
+        if($fest->field_open_for_fee_waiver['und']['0']['value'] == 1){
+          $free_waiver = $user_data->field_num_free_waiver['und']['0']['value'];
+          $form['#free_waiver'] = $free_waiver;                                         // dicount free enter on festival
+        }
+      }
+  
+    $form['#usermail'] = $user->mail;
+    $form['#useruid'] = $user->uid;
+    $username = !empty($user->name) ? $user->name : t('anonymous');
+    //dsm($user);
+    
+    $cur_films = unserialize($fest->field_added_films['und']['0']['value']);
+
+    // define time of current deadline
+    $cur_date = '';
+    
+    if(!empty($fest->field_earlybird_deadline)){
+      $earlybird_deadline = strtotime($fest->field_earlybird_deadline['und']['0']['value']);
+      if($earlybird_deadline>$today_date)
+          $cur_date = 'field_earlybirddeadline';
+    }
+    if(empty($cur_date))
+    if(!empty($fest->field_regular_deadline)){
+      $regular_deadline = strtotime($fest->field_regular_deadline['und']['0']['value']);
+      if($regular_deadline>$today_date)
+          $cur_date = 'field_regulardeadline';
+    }
+    if(empty($cur_date))
+    if(!empty($fest->field_late_deadline)){
+      $late_deadline = strtotime($fest->field_late_deadline['und']['0']['value']);
+      if($late_deadline>$today_date)
+          $cur_date = 'field_latedeadline';
+    }
+    if(empty($cur_date))
+    if(!empty($fest->field_extended_deadline)){
+      $late_extended = strtotime($fest->field_extended_deadline['und']['0']['value']);
+      if($late_extended>=$today_date)
+          $cur_date = 'field_extendeddeadline';
+    }
+    $form['#cur_date'] = $cur_date;
+    //dsm($cur_date);
+    
+    //dsm($fest);     
+    // get all deadline's fees
+    foreach ($fest->field_categoriesentryfees['und'] as $categentry) {
+    //   dsm(taxonomy_term_load($categentry['target_id']));
+       $term = taxonomy_term_load($categentry['target_id']);
+       $categ_list[$categentry['target_id']] = $term->name;
+       // ?? if(!empty($term->$cur_dategentry['target_id']] = $term->name;
+       if(!empty($term->$cur_date)){
+         $term_price = $term->$cur_date;
+         if(empty($term_price['und']['0']['value'])){
+            $categ_list_price[$categentry['target_id']] = 'free';
+         }else{
+            $categ_list_price[$categentry['target_id']] = $term_price['und']['0']['value'] . " $";
+         }
+       }
+       
+    }
+  
+    // collect all films
+ 
+    $nodes = node_load_multiple(NULL, array('type' => "embedded_video", 'uid' => "$user->uid",'status' => "1"));      
+    //if (empty($nodes)){
+    $nodes_scr = node_load_multiple(NULL, array('type' => "script", 'uid' => "$user->uid"));
+    //}
+    
+    $nodes = $nodes_scr+$nodes;
+    //dsm(($nodes_scr+$nodes));
+                                        
+      foreach ($nodes as $nid => $node) {
+        $list[$node->nid] =  l(check_plain($node->title), '/node/'.$node->nid);
+      }                                  
+  
+    // if user don't have any film
+    if(empty($list)){
+        
+          $form['form'] = array(
+            '#type'   => 'item',        
+            '#title'  => t('Missing film(s)'),        
+            '#markup' => '<div>You don\'t have any film(s). Please add your work, after that you can submit your film <br /> Just follow the link, it\'s simply and free <br /><br />
+             <div class="btn"><a href="/node/add/embedded-video">add work</a></div></div>',
+          
+            );
+            
+    }else{ 
+        $form['#mylist_films'] = $list;
+        
+        $form['form'] = array(    
+                '#type'   => 'item',                  
+                '#markup' => 'Check categories you wish to enter on the festival <b>"<a href="/node/'.$fest->nid.'">'.$fest->title .'</a>"</b>',      
+        );  
+              
+        foreach ($list as $nid => $item_list){  
+  
+          $form['nodes'][$nid] = array(
+                '#title' =>$item_list,
+                '#type' => 'checkboxes',
+                '#options' => $categ_list,     
+                '#extra_data' => $categ_list_price,
+                '#opt_disabled' => $cur_films,
+                '#theme' => 'checkboxes_table',
+              );                       
+        }
+     
+      //  dsm($form);
+        $form['actions']['submit'] = array(
+          '#type' => 'submit',
+          '#value' => t('Submit'),
+          '#submit' => array('festival_add_films'),    
+        );
+        
+        if($free_waiver>=1)
+        $form['actions']['free_submit'] = array(
+          '#type' => 'submit',
+          '#value' => t('free submit'),
+          '#submit' => array('festival_add_works_free'),    
+        );
+        
+    }
+    
+    //dsm($form);
+    $items = uc_cart_get_contents();    
+    
+    return $form;
+  }else {
+    drupal_goto("user/register");  
+  }
+  
+}
+
+/**
+ * Function used to add work(films or script) by user role to festival.
+ * 
+ *  - #useruid: Current user 
+ *  - #fest: Title of the festival(s)
+ *  - #mylist_films: All works of user
+ * 
+ */
+  
+function festival_add_works_free($form, &$form_state){
+
+//dsm($form);
+
+$free_waiver = $form['#free_waiver'];
+
+$cur_date = $form['#cur_date'];
+
+$fest_node = node_load($form['#fest']); 
+$item_id_updated = '';
+$list_films = '';
+
+$script_data_arr = array();
+$film_data_arr = array();
+
+$user = user_load($form['#useruid']);
+$user_fest = user_load($fest_node->uid);
+
+  // проходим через все работы (фильмы , скрипты)
+  foreach ($form['#mylist_films'] as $key => $title) {
+
+    $film_data = array();
+    $script_data = array();
+    $work_nid = $key;   //film_nid
+    $fnode = node_load($key);
+    // выбранные категории фестивалей
+    $selected_categorys = $form['nodes'][$key]['#value'];
+    foreach ($selected_categorys as $selected_category){
+    if ($free_waiver >= 1){
+    
+      $term = taxonomy_term_load($selected_category);
+      $data = array('3' =>  $term->name .' ( ' . strip_tags($title) .' )' );
+      $script_data[] = array('fest' => $form['#fest'], 'tid' => $term->tid, 'free' => 1 );
+      $film_data[] = array('film' =>$key , 'tid' => $term->tid, 'free' => 1);
+      $free_waiver = $free_waiver-1;
+      // send notify email to filmmaker
+      _send_email_notify($user, $user_fest, $fest_node, $fnode, 'filmmaker');
+      // send notify email to festival
+      _send_email_notify($user, $user_fest, $fest_node, $fnode, 'festival');
+      
+      
+      }
+    }//foreach
+  
+  $script_data_arr =  $script_data;
+  // save data to works about festival
+  //dsm($fnode);
+  if(empty($fnode->field_submitted_to['und']['0']['value'])){
+    $fnode->field_submitted_to['und']['0']['value'] = serialize($script_data_arr);
+  }else{
+    $cur_fest_exist = unserialize($fnode->field_submitted_to['und']['0']['value']);
+    $fnode->field_submitted_to['und']['0']['value'] = serialize(array_merge($script_data_arr,$cur_fest_exist));
+  }
+  node_save($fnode); 
+  
+  $film_data_arr = $film_data;
+  // save data to festival about added work
+  if(empty($fest_node->field_added_films['und']['0']['value'])){
+    $fest_node->field_added_films['und']['0']['value'] = serialize($film_data_arr);
+  }else{
+    $cur_works = unserialize($fest_node->field_added_films['und']['0']['value']);
+    $fest_node->field_added_films['und']['0']['value'] = serialize(array_merge($film_data_arr,$cur_works));
+  }
+  field_attach_update('node', $fest_node);
+  
+     
+  }//foreach 
+  
+      
+  $user->field_num_free_waiver['und'][0]['value'] = $free_waiver;
+  user_save($user);
+
+
+}// add with free waiver   
+
+/**
+ * Page callback; Acts the e-mail action using drupal_mail
+ * and forward to the destination.
+ *
+ * @param $user
+ *   Current user.
+ * @param $target_mail
+ *   Email of current user.
+ * @param $fnode->title
+ *   Current title of submitted film/script.
+ * @param $fest_node->title
+ *   Title of submitted festival.
+ */
+function _send_email_notify($user, $user_fest, $fest_node, $fnode, $role){
+                
+  $username = $user->name; 
+  if($user->field_first_name){
+    $username = $user->field_first_name['und']['0']['value']; 
+  }elseif (!empty($user->data['ulogin'])){
+    $username = $user->data['ulogin']['first_name']; 
+  }
+if($role =='festival'){ 
+  $target_mail = $user_fest->mail;
+  if(!empty($fest_node->field_email)){
+     $target_mail = $fest_node->field_email['und']['0']['value'];
+  }
+   
+  $subjectmail = 'New submission '.$fnode->title;            
+  $textemail = '<div style="width: 650px;margin: 0 auto;"><div style="text-align: center;"><a href="http://worldfilmpresentation.com" title="to World Film Presentation" style="color:#327ccb;color:#a5a5a5" target="_blank"><img alt="World Film Presentation" src="http://dev.worldfilmpresentation.com/sites/default/files/logo_wfp.png" title="World Film Presentation" width="200" height="auto" border="0"></a></div>
+<p style="text-align: center;font-size: 18px;margin-bottom: 50px;">Festival '. $fest_node->title.' got new submission on WFP.</p><br /><p><strong>'.$fnode->title.'</strong></p><p>submitted by '.$username.'</p><p><a href="http://worldfilmpresentation.com/node/'.$fnode->nid.'">Submission link</p>
+<p>You can contact '.$username.' by sending an email to '.$user->mail.'</p><br /><div style="text-align: center;margin-top: 50px;background-color: #eee;padding: 20px;"><p>WorldFilmPresentation Team</p><br /><br /><p>&copy; Worldfilmpresentation 2017</p></div></div>';
+}else if($role =='filmmaker'){
+  $target_mail = $user->mail;
+  $subjectmail = $fnode->title . ' submitted to '.$fest_node->title; 
+  $textemail = '<div style="width: 650px;margin: 0 auto;"><div style="text-align: center;"><a href="http://worldfilmpresentation.com" title="to World Film Presentation" style="color:#327ccb;color:#a5a5a5" target="_blank"><img alt="World Film Presentation" src="http://dev.worldfilmpresentation.com/sites/default/files/logo_wfp.png" title="World Film Presentation" width="200" height="auto" border="0"></a></div>
+<p style="text-align: center;font-size: 18px;margin-bottom: 50px;">You have submitted '.$fnode->title.' to '.$fest_node->title.'.</p></div><br />
+<p><a href="http://worldfilmpresentation.com/node/'.$fest_node->nid.'">Festival page</a></p>
+<p>You will be notified about your films status and the necessary next steps. </p><br />
+<div style="text-align: center;margin-top: 50px;background-color: #eee;padding: 20px;"><p>WorldFilmPresentation Team</p><br /><br /><p>&copy; Worldfilmpresentation 2020</p></div>';  
+}else if($role =='user_role_ff'){
+  $target_mail = $user->mail;
+  $subjectmail = 'Permissions of '.$fnode->title . ' submit to '.$fest_node->title; 
+  $textemail = $fest_node->title.' would like to offer your film '.$fnode->title.' preselected status at their festival. ';
+}
+
+  $mail = array(
+    'subject' => $subjectmail,
+    'message' => $textemail,
+  );                                                 
+  drupal_mail('system', 'WorldFilmPresentation',$target_mail, language_default(), array('context' => $mail));       //invitation@worldfilmpresentation.com
+     
+}
+
+
+/**
+ * Implements hook_theme().
+ */
+function festival_theme() {
+  return array(
+    'checkboxes_table' => array(
+      'render element' => 'element',
+    ),
+    'checkboxes_table2' => array(
+      'render element' => 'element',
+    ),
+  );
+
+}
+
+                            
+                            
+/**
+ * Render checkboxes as table.
+ */
+function theme_checkboxes_table2($vars) {
+
+  $header =  array('Categories',  'Select');  
+
+  $element = $vars['element'];
+  $rows = array();
+  //dsm($element);
+  foreach (element_children($element) as $key => $val) {
+    
+    $nid = $element['#name'];
+    $op_state = '';  
+    // opt-disabled - все добавленные кем либо фильмы, которые далее проеряем на доступ к добавлению(submit)
+    foreach ( $element['#opt_disabled'] as $option) {   
+        if(($val == $option['tid']) & ($option['film'] ==$element['#filmid']) ){         //
+          $op_state = 'This category added';
+        }
+    }
+    unset($element[$val]['#title']);
+    
+    if(empty($op_state))
+      $op_state = drupal_render($element[$val]);
+
+    $rows[] = array(
+      $element['#options'][$val],
+      $op_state, //drupal_render($element[$val]),
+    );
+  }
+  return theme('table', array('rows' => $rows, 'header' => $header,));
+}
+                            
+                            
+/**
+ * Render checkboxes as table.
+ */
+function theme_checkboxes_table($vars) {
+
+  $header =  array('Categories', 'Entry Fees', '');  
+
+  $element = $vars['element'];
+  $rows = array();
+  //dsm($element);
+  foreach (element_children($element) as $key => $val) {
+    
+    $nid = $element['#name'];
+    $op_state = '';  
+ 
+    foreach ( $element['#opt_disabled'] as $option) {
+      if($option['film'] == $nid){
+        //dsm($option['film']);
+        if($val == $option['tid']){
+          $op_state = '<div class="table_subm">Submitted</div>';
+        }
+      }
+    }
+    unset($element[$val]['#title']);
+    if(empty($op_state))
+      $op_state = drupal_render($element[$val]);
+
+    $rows[] = array(
+      $element['#options'][$val],
+      $element['#extra_data'][$val],
+      $op_state, //drupal_render($element[$val]),
+    );
+  }
+  return theme('table', array('rows' => $rows, 'header' => $header,));
+}
+
+
+/**
+ * Get a price fee of films for current festival .
+ *
+ * @param $variables
+ *   - elements: A renderable array of links using the following keys:
+ *     - $fest: List of festivals
+ *     - $fest_cat: Festival in selected category
+ *     - $price: Avaliable price at current deadline
+ */
+ 
+function festival_get_price($fest, $film_categs_name){
+  
+  foreach ($fest->field_categoriesentryfees['und'] as $fest_cat){
+    $fest_cat = taxonomy_term_load($fest_cat['target_id']);
+    //$fest_cat_names[] = $fest_cat->name;
+    if($fest_cat->name == $film_categs_name){
+      $tax_fees = $fest_cat;    
+      //dsm($fest_cat);
+    }
+    //
+  }
+
+  
+  $today_timestamp = strtotime(date('d-m-Y', time()));
+  
+  if(!empty($fest->field_earlybird_deadline['und']['0']['value']) ){
+    $time_earlybird_deadline = strtotime(substr($fest->field_earlybird_deadline['und']['0']['value'], 0, 10));   
+    if($time_earlybird_deadline>=$today_timestamp){
+       $price = $tax_fees->field_earlybirddeadline['und']['0']['value']; 
+    }
+  }
+  if(!empty($fest->field_regular_deadline['und']['0']['value']) ){
+    $time_regular_deadline = strtotime(substr($fest->field_regular_deadline['und']['0']['value'], 0, 10)); 
+    if($time_regular_deadline>=$today_timestamp){
+       $price = $tax_fees->field_regulardeadline['und']['0']['value'];
+    }
+  }
+  if(!empty($fest->field_late_deadline['und']['0']['value']) ){
+    $time_late_deadline = strtotime(substr($fest->field_late_deadline['und']['0']['value'], 0, 10));    
+    if($time_late_deadline>=$today_timestamp){
+       $price = $tax_fees->field_latedeadline['und']['0']['value'];
+    }
+  }
+  if(!empty($fest->field_extended_deadline['und']['0']['value']) ){
+    $time_extended_deadline = strtotime(substr($fest->field_extended_deadline['und']['0']['value'], 0, 10));   
+    if($time_extended_deadline>=$today_timestamp){
+       $price = $tax_fees->field_extendeddeadline['und']['0']['value'];
+    }
+  }
+  return $price;
+}
+     
+     
+/**
+ * добавление фильмов в поле фестиваля через rules "E-mail admin checkout notification"
+ *
+ */
+function festival_add_films($form, &$form_state){
+
+//dsm($form);
+uc_cart_empty(uc_cart_get_id());
+
+$cur_date = $form['#cur_date'];
+$total_sum = 0;
+$item_id_updated = array();
+$list_films = '';
+
+  foreach ($form['#mylist_films'] as $key => $title) {
+
+    $total = 0;
+    $film_nid = $key; 
+    
+    $selected_categorys = $form['nodes'][$key]['#value'];
+    foreach ($selected_categorys as $selected_category){
+       $term = taxonomy_term_load($selected_category);
+                    
+       $term_price = $term->$cur_date;
+       $price = $term_price['und']['0']['value'];
+       $total += $term_price['und']['0']['value'];
+       $total_sum += $term_price['und']['0']['value'];
+       
+       
+      // добавляем на каждый фильм submission 
+      
+      if($total > 0)       
+      uc_cart_add_item('3760', $qty = 1, $data = null, $cid = NULL, $msg = TRUE, $check_redirect = false, $rebuild = true);        
+      $data = array('3' =>  $term->name .' ( ' . strip_tags($title) .' )' );
+      $items = uc_cart_get_contents(); 
+                                                
+      foreach ($items as $item) {
+      //dsm($item);
+      
+        if(!in_array($item->cart_item_id, $item_id_updated)){
+          //dsm($last_item_id);
+          
+          $film_data = array('film' => $film_nid, 'tid' => $term->tid );
+          $film_data = serialize($film_data);
+      
+        //  dsm($title);
+          $item->qty = 1;
+          $item->price = $price;
+          $item->display_price = $price;
+          
+          $item->title['#markup'] = strip_tags($title);
+          
+          $item->data['#fest'] = $form['#fest'];
+          $item->data['#fest_title'] = $form['#fest_title'];
+          $item->data['film_data'] = $film_data;
+          $item->data['attributes'] = $data;
+          $item->data['varprice'] = $price;
+          uc_cart_update_item($item);
+          $item_id_updated[] = $item->cart_item_id;      
+        }    
+      }//f2       
+       
+    
+    $items = uc_cart_get_contents();
+    //dsm($items);   
+    }//f1
+    $form['nodes'][$key]['total'] = $total;
+    
+     
+
+    
+         
+  }//foreach 
+
+ 
+  drupal_goto("cart");
+ 
+   /** futures add item in cart
+   *  
+   *
+   */ 
+  /*************************
+  //условие существующих фильмов
+  // Load the node by NID
+  $node = node_load($form['#fest']);   
+  $cur_films = $node->field_added_films['und']['0']['value'];  
+  $fest_user = user_load($node->uid); 
+  $film_list = $form['boxes']['#value']; 
+  $films_link = ''; // ссылки фильмов
+ 
+  $count_film = 0;
+  foreach ($film_list as $nid_film) {  
+    $films .= $nid_film . ',';
+    $total_sum += (int)$form['#price'][$nid_film];
+    $count_film +=1;
+    $films_link .= "http://worldfilmpresentation.com/node/".$nid_film . "<br />";  
+  }
+************/  
+
+  /***************
+  //$cur_films = implode(',',$cur_films);
+  if(empty($cur_films)){
+    $films = substr($films, 0, -1);  
+  }else{
+    $films = $films .  $cur_films;
+  }
+ 
+  $node->field_added_films['und']['0']['value'] = $films;
+  field_attach_update('node', $node);
+  
+  $price = $total_sum; //$count_film * (int)$form['#price'];
+  
+  // письмо filmmaker     
+  drupal_mail('system', 'WorldFilmPresentation', $form['#usermail'], language_default(), array(
+    'context' => array(
+      'subject' => 'Payment fee ',
+      'message' => '<p>Please make payment for selected films. Total price '. $price .' $</p><p><a href="http://worldfilmpresentation.com/Festivalfee">Link to compleate payment </a></p>',
+    )
+  ));  
+  
+  // письмо festival owner
+  drupal_mail('system', 'WorldFilmPresentation', $fest_user->mail, language_default(), array(
+    'context' => array(
+      'subject' => 'To your festival added film(s)',
+      'message' => '<p>To festival '. $node->title .' added film(s)</p><p>'.$films_link.'</p>',
+    )
+  ));  
+    
+  // system message 
+  drupal_mail('system', 'WorldFilmPresentation', 'info@intellectpictures.com', language_default(), array(
+    'context' => array(
+      'subject' => 'Добавлен фильм(ы) на фестиваль',
+      'message' => '<p>Total price '. $price .' $</p><p>фильмы '.$films_link.' </p><p>фестиваль http://worldfilmpresentation.com/node/'.$node->nid. ' </p><p>Email  пользователя '.$form['#usermail'].'</p>',
+    )
+  ));  
+ 
+  drupal_set_message(t('Film(s) added'), 'status');
+  
+  drupal_goto("node/".$node->nid);
+  ***********/
+ }  
+ 
+
+/**
+ * Helper function to add film(s)
+ *
+ * @param $data
+ *   - elements: using the following keys:
+ *     - ['components']['festival']['value']: Festivals id
+ *
+ *   - $cur_films: List of submitted films to the festival
+ *
+ */ 
+ 
+function festival_myfest_add_films($data, $var_url){
+  //dsm($data);
+  
+  //send email notify from     "I want to see this film in Festival"     to festival owner
+  if($data['components']['festival']['component']['nid'] == 1536){
+   if(!empty($data['components']['festival']['value'])){  // festival id
+      $fest_node = node_load(current($data['components']['festival']['value']));      
+      $film_node = node_load($var_url);
+      $title = rtrim($fest_node->title,'<br>');  
+
+        // send email to festival owner              
+        drupal_mail('system', 'WorldFilmPresentation', 'shine@gmail.com', language_default(), array(
+          'context' => array(
+            'subject' => 'Request film to your festival',
+            'message' => '<p>HI! We did a small marketing, and we want to inform you that film "<span style="font-weight: bold;" ><a href="http://worldfilmpresentation.com/node/'.$var_url.'">'.$film_node->title.'</a></span>" 
+want to be seen on your festival <a style="font-weight: bold;" href="http://worldfilmpresentation.com/node/'.$fest_node->nid.'">'.$title.'</a> .
+If filmmaker confirm this interest, we will notify you. 
+If you want to make a better offer to the owner of this film, then do not hesitate to contact us. 
+Our support team will ensure timely delivery of your offer.</p>',
+          )
+        ));   
+    }//if2 
+  }//if
+   
+  // --------------------------------
+  
+  // film add to festival
+  if($data['components']['festival']['component'] == 1537)
+  if(!empty($data['components']['festival']['value'])){  // festival id
+    if(!empty($var_url)){      
+      $fest_node = node_load(current($data['components']['festival']['value']));  
+      $cur_films = $fest_node->field_added_films['und']['0']['value'];
+
+      $arr_films = explode(',',$cur_films);
+      if (in_array($var_url, $arr_films, true)) {
+        drupal_set_message(t('Film is already added'), 'status');
+      }else{
+        if($cur_films == ''){
+          $films = $var_url;
+        }else{
+          $films = $cur_films.','.$var_url;
+        }         
+        $fest_node->field_added_films['und']['0']['value'] = $films;
+        drupal_set_message(t('Film added'), 'status');
+        field_attach_update('node', $fest_node);
+        
+        // send email to festival owner                                   
+        drupal_mail('system', 'WorldFilmPresentation', 'shine@gmail.com', language_default(), array(
+          'context' => array(
+            'subject' => 'Request film to your festival',
+            'message' => '<p>HI! We did a small marketing, and we want to inform you that film <a href="http://worldfilmpresentation.com/node/'.$var_url.'">http://worldfilmpresentation.com/node/'.$var_url.'</a> want to be seen your festival <b>"'.$fest_node->title.'"</b> .
+If filmmaker confirm this interest, we will notify you. 
+If you want to make a better offer to the owner of this film, then do not hesitate to contact us. 
+Our support team will ensure timely delivery of your offer.</p>',
+          )
+        ));                  
+         
+      }                   
+  
+      drupal_goto("node/".$var_url);
+     
+    }
+  }
+  
+  
+} 
+
+
+/**
+ * Render a themed list of Film status.
+ *
+ * @param $variables
+ *   - elements: A renderable array of links using the following keys:
+ *     - #title: Title of the link, passed to l().
+ *     - #status: Current status of Festival
+ */
+ 
+function form_festival_devstatus($form, &$form_state){
+
+   $options = array(
+     array(
+      'title' => 'Tableselect element',
+      'content_type' => 'with textfield!',
+      'status' => 'great',
+      'comment' => array('data'=>array('#type'=>'textfield',
+      '#default_value'=>'', '#title' => 'Comment', 
+      '#title_display'=>'invisible','#name'=> 'comment[row1]'
+     ),
+    ),
+  ),
+  array(
+    'title' => 'Enjoy',
+    'content_type' => 'the',
+    'status' => 'action',
+    'comment' => array('data'=>array(
+      '#type'=>'textfield',
+      '#default_value'=>'', 
+      '#title' => 'Comment',
+      '#title_display'=>'invisible',
+      '#name'=> 'comment[row2]'
+        ),
+      ),
+    ),
+  );
+
+  $header = array(
+    'title' => t('Column 1'),
+    'content_type' => t('Column 2'),
+    'status' => t('Column 3'),
+    'comment' => t('Fields'),
+  );
+
+  $form['table'] = array(
+    '#type' => 'tableselect',
+    '#header' => $header,
+    '#options' => $options,
+    '#empty' => t('No content available.'),
+  );
+
+  $form['comment'] = array(
+    '#type' => 'value',
+  );
+
+  $form['submit'] = array(
+    '#type'=>'submit',
+    '#value' => 'Go!',
+  );
+
+  return $form;
+  
+}
+
+
+/**
+ * Callback for setting field property festivals.
+ *
+ * @param #fest
+ *   Current festival
+ * @param $node_details
+ *   Information of film
+ *   following values:
+ *     - "$films_list": Submitted too festival
+ *     - "$film_cat": Category of festival deadline
+ * @param $items
+ *   List of possible status
+ * @param $film_time
+ *   Show full lenght of film
+ * @param $film_status
+ *   Current status of film 
+ * @param $film_comment
+ *   Show moderator comment for current film
+ * @param $term_country
+ *   Film produced country   
+ * 
+ * 
+ */
+ 
+function form_festival_status($form, &$form_state){
+  
+  drupal_add_js(drupal_get_path('module', 'festival') . '/festival.js');
+
+  $fest = node_load(arg(2));
+  $form['#fest'] = arg(2);  
+  $form['#fest_title'] = $fest->title;
+  
+  $films_list = array();
+  
+  $films_list2 = array();
+  if(!empty($fest->field_added_films)){
+    $node_details = unserialize($fest->field_added_films['und']['0']['value']);
+    //dsm($node_details);
+    foreach($node_details as $node){
+      $films_list[] = $node['film'];
+      $films_list_full[$node['film'].'-'.$node['tid']] = $node;   
+         
+      $term = taxonomy_term_load($node['tid']);
+      $film_cat['name'.$node['film'].'-'.$node['tid']] = $term->name;
+      $film_cat_tid[$node['film']] = $term->tid;
+    }  
+  }
+
+
+    // list of status
+    $items = array(
+    '--' => '--',
+    'Preselected 2017'   => 'Preselected 2017',
+    'Preselected 2018'   => 'Preselected 2018',
+    'Semi-Finalist 2017'   => 'Semi-Finalist 2017',
+    'Semi-Finalist 2018'   => 'Semi-Finalist 2018',
+    'Finalist 2017'   => 'Finalist 2017',
+    'Finalist 2018'   => 'Finalist 2018',
+      'Selected'   => 'Selected',
+      'Semi-Finalist'       => 'Semi-Finalist',
+      'Official Selection'   => 'Official Selection',
+      'Preselected'   => 'Preselected',
+      'Not acepteed'   => 'Not acepteed',
+      'In Consideration'   => 'In Consideration',
+      'Only send a letter'   => 'Only send a letter',
+    );
+
+    // collect all films
+    
+    $nodes = node_load_multiple($films_list);  
+    
+    //dsm($films_list_full);
+    foreach ($films_list_full as $nid => $node) {
+    
+      $linkremove = l('remove', 'admin/removefilm/'.$node['film'] . '/festival/'.$fest->nid. '/tid/'.$node['tid']);
+      $author = user_load($nodes[$node['film']]->uid);
+  
+      $csstext = 'white';            // 'whitegray'   
+        if(empty($node['free'])){
+          $csstext = 'greentext';
+          $linkremove = '';
+          }
+        if(!empty($node['addby'])){
+          $csstext = 'bluetext';
+          $linkremove = l('remove', 'admin/removefilm/'.$node['film'] . '/festival/'.$fest->nid. '/tid/'.$node['tid']);
+          }
+          
+      $film_time =  $nodes[$node['film']]->field_runtime['und']['0']['value'];    
+      $film_status = _get_params(unserialize($nodes[$node['film']]->field_submitted_to['und']['0']['value']) ,$fest->nid,$node['tid'],'status');
+      $film_comment = _get_params(unserialize($nodes[$node['film']]->field_submitted_to['und']['0']['value']) ,$fest->nid,$node['tid'],'comment'); 
+      $term_country = taxonomy_term_load($nodes[$node['film']]->field_category_country['und']['0']['tid']);
+      if($term_country == null){
+          $term_country_name = '';
+      }else 
+        $term_country_name = $term_country->name;
+      $list[$node['film'].'-'.$node['tid']] = array(
+        'title' => array(
+          'data' => array(
+            '#type' => 'link',
+            '#title' => $nodes[$node['film']]->title,
+            '#href' => 'node/' . $node['film'],
+            '#attributes' => array('class' => array($csstext)),
+            ),
+          ),
+          'category' => array(
+            'data' => array(
+              '#type' => 'markup',
+              '#markup' => $film_cat['name'.$node['film'].'-'.$node['tid']],
+            )) , 
+          
+          $film_time, 
+          'country' => $term_country_name,
+          $film_status,
+          $linkremove,
+          
+          'comment' => array(
+            'data'=>array(
+              '#type'=>'textfield',
+              '#title' => $film_comment, 
+              '#name'=> 'comment['.$node['film'].'-'.$node['tid'].']',
+            ),
+           ),
+           $author->mail, 
+
+          );    
+    }
+                                    
+
+    
+    // if user don't have any film
+    if(empty($list)){
+        
+          $form['form'] = array(
+            '#type'   => 'item',        
+            '#title'  => t('Missing film(s)'),        
+            '#markup' => '<div>We don\'t have any film(s). </div>',
+          
+            );
+            
+    }else{ 
+
+    
+        $form['#mylist_films'] = $list;
+        
+        $form["status_options"] = array(
+            "#type" => "select", 
+            "#title" => t("Select status."), 
+            "#options" => $items,
+            "#description" => t("Chosen status will apply to all checked film(s)"),
+            );
+
+          
+        $form['form'][] = array(    
+                '#type'   => 'item',                  
+                '#markup' => 'Check film you wish to enter on the festival <a href="/node/'.$fest->nid.'"><b>'.$fest->title.'</b></a>',// <b>"<a href="/node/'.$fest->nid.'">'.$fest->title .'</a>"</b>',      
+        ); 
+        
+        $form['form'][] = array(    
+                '#type'   => 'item',                  
+                '#markup' => '<span class="squarehp"></span><span>With hight priority</span>',
+                '#prefix' => '<div class="publishedby">',
+                '#suffix' => '</div>',
+        );  
+        
+        $form['form'][] = array(    
+                '#type'   => 'item',                  
+                '#markup' => '<span class="squareby"></span><span>Add by admin or festival\'s</span>',
+                '#prefix' => '<div class="publishedby">',
+                '#suffix' => '</div>',
+        );  
+        
+        $header = array(
+          'title' => array('data' => t('Title'), 'field' => 'n.title'),
+          'category' => array('data' => t('Category')), 
+          t('Lenght'), 
+          'country' => array('data' => t('Country'), 'field' => 'n.country'),
+          t('Status'), 
+          t('Operation'),
+          'comment' => t('comment'),
+          t('email'),
+        );
+        
+        $form['checkboxes'] = array(
+          '#type' => 'tableselect',
+          '#header' => $header,
+          '#options' => $list,
+          '#empty' => 'No users were found.'
+        );
+        
+        $form['comment'] = array(
+          '#type' => 'value',
+        );
+        
+        $form['sendemail'] = array(
+          '#type' =>'checkbox',         
+          '#title' => t('Send email.'),
+        
+        );
+
+        $form['textemail'] = array(
+          '#title' => t('<p>Warning "Hello Filmmaker name" at the begin will automaticly add.</p><p>Send this email</p>'),          
+          '#type' => 'text_format',             
+          '#description' => t('Send this email selecetd item(s)'),          
+          '#default_value' => '',
+          );
+                   
+        $form['actions']['submit'] = array(
+          '#type' => 'submit',
+          '#value' => t('Submit'),
+          '#submit' => array('festival_changestatus'),    
+        );
+        
+        
+    }
+
+    $form['#attached']['css'] = array(
+      drupal_get_path('module', 'festival') . '/cssstyle.css',
+    );
+    //dsm($form);
+  
+    return $form;
+
+  
+}
+
+/**
+ * Helper function for creating formatted parametrs of film.
+ * 
+ */
+function _get_params($node_details,$fest, $tid, $params){
+  
+  $film_status = '';
+  foreach($node_details as $key => $node_detail){   
+    if($node_detail['fest'] == $fest)     
+      if($node_detail['tid'] == $tid){
+        if(!empty($node_details[$key][$params])){
+          $film_params = $node_details[$key][$params];
+        }
+      }                            
+  }
+  
+  return $film_params;
+}
+
+/**
+ * Page callback; Acts of changing status of selected film(s) in current festival
+ *
+ * @param $fest
+ *   Current festival
+ * @param $chosen_opt
+ *   Selected film(s) to change status
+ * @param $chosen_status
+ *   Changing status 
+ * @param $sendemail
+ *   E-mail destination user notification
+ * @param $textemail
+ *   Cover letter with comment of festival moderator
+ */
+function festival_changestatus($form, &$form_state){
+  
+  $fest = $form['#fest'];
+  $chosen_opt = $form['checkboxes']['#value'];
+  $chosen_status = $form['status_options']['#value'];
+  $status_options = $form['status_options']['#options'];
+  $sendemail = $form['sendemail']['#value'];
+  $textemail = $form['textemail']['value']['#value'];
+  $comments =  $form_state['values']['comment'];
+  $adm_message = '';
+  
+  foreach ($chosen_opt as $option) {
+    $film_tid = explode("-", $option);
+    $film = $film_tid[0];
+    $tid = $film_tid[1];
+    $node_details = ''; // clear to detect if new date was recorded then update comment
+    
+    $node = node_load($film);
+    $userrole = 'admin';
+    if($chosen_status == 'Only send a letter'){      
+      if($sendemail == 1){              
+        $adm_message = 'Letter(s) sent';
+        _send_email_statuspage($node, $textemail,$userrole);
+      }else{ drupal_set_message('To send a letters you should check on "Send email" and type a message ','error'); }    
+    }
+    //else{
+      if(!empty($node->field_submitted_to)){
+        $node_details = unserialize($node->field_submitted_to['und']['0']['value']);
+
+        //dsm($node_details);                 
+        foreach($node_details as $key => $node_detail){
+          
+          if($node_detail['fest'] == $fest)      
+            if($node_detail['tid'] == $tid){
+            
+              if($chosen_status != '--')
+                $node_details[$key]['status'] = $chosen_status;
+              
+              // leave comment
+              $comment = $comments[$option];
+              if($node_details[$key]['comment']){
+                 $node_details[$key]['comment'] .= ' *** '.$comment;
+              }else{
+                 $node_details[$key]['comment'] = $comment;
+              }
+              
+              if($sendemail == 1){              
+                $adm_message = 'Status updated for selected films , letter(s) sent';       
+                _send_email_statuspage($node, $textemail,$userrole);
+              }else{$adm_message = 'Status set for selected films';}
+            }     
+        }  
+      $node->field_submitted_to['und']['0']['value'] =  serialize($node_details);
+      node_save($node);     
+              
+      }     
+    //}//else
+        
+    
+  }
+  
+  if(!empty($adm_message))
+    drupal_set_message($adm_message);
+
+}
+
+/**
+ * Helper function to create an email of the date values in a work(film/script) that need to be processed.
+ */
+function _send_email_statuspage($node, $textemail, $userrole){
+
+  //$email = db_query("SELECT mail FROM {users} WHERE uid = :uid", array(':uid' => $node->uid))->fetchField();
+  $user = user_load($node->uid);
+                
+  $username = $user->name; 
+  if($user->field_first_name){
+    $username = $user->field_first_name['und']['0']['value']; 
+  }elseif (!empty($user->data['ulogin'])){
+    $username = $user->data['ulogin']['first_name']; 
+  }
+  if($userrole == 'admin'){            
+    $textemail = "<p>Hello ".$username ."</p>" . $textemail . "<br />";
+  }
+  
+  $mail = array(
+    'subject' => $node->title . ' updating.',
+    'message' => $textemail,
+  );                                                
+  drupal_mail('system', 'WorldFilmPresentation',$user->mail, language_default(), array('context' => $mail));       //invitation@worldfilmpresentation.com
+
+}
+
+/**
+ * Callback for setting field property festivals.
+ *
+ * @param #fest
+ *   Current festival
+ * @param $node_details
+ *   Information of film
+ *   following values:
+ *     - "$films_list": Submitted too festival
+ *     - "$film_cat": Category of festival deadline
+ * @param $items
+ *   List of possible status
+ * @param $film_time
+ *   Show full lenght of film
+ * @param $film_status
+ *   Current status of film 
+ * @param $film_comment
+ *   Show moderator comment for current film
+ * @param $term_country
+ *   Film produced country   
+ * 
+ * 
+ */
+
+function form_userfestival_status($form, &$form_state){
+  
+  drupal_add_js(drupal_get_path('module', 'festival') . '/festival.js');
+
+  $wrongfest = false;
+  $fest = node_load(arg(1));
+  $form['#fest'] = arg(1);  
+  $form['#fest_title'] = $fest->title;
+  global $user;
+  if($fest->uid == $user->uid){
+    $wrongfest = true;
+  }
+  $films_list = array();
+  $films_list2 = array();
+  
+  if($wrongfest == true){
+  if(!empty($fest->field_added_films)){
+    $node_details = unserialize($fest->field_added_films['und']['0']['value']);
+    //dsm($node_details);
+    foreach($node_details as $node){
+      $films_list[] = $node['film'];
+      $films_list_full[$node['film'].'-'.$node['tid']] = $node;   
+         
+      $term = taxonomy_term_load($node['tid']);
+      $film_cat['name'.$node['film'].'-'.$node['tid']] = $term->name;
+      $film_cat_tid[$node['film']] = $term->tid;
+    }  
+  }
+
+
+    // list of status
+    $items = array(
+    'Preselected 2017'   => 'Preselected 2017',
+    'Preselected 2018'   => 'Preselected 2018',
+    'Semi-Finalist 2017'   => 'Semi-Finalist 2017',
+    'Semi-Finalist 2018'   => 'Semi-Finalist 2018',
+    'Finalist 2017'   => 'Finalist 2017',
+    'Finalist 2018'   => 'Finalist 2018',
+      'Selected'   => 'Selected',
+      'Semi-Finalist'       => 'Semi-Finalist',
+      'Official Selection'   => 'Official Selection',
+      'Preselected'   => 'Preselected',
+      'Not acepteed'   => 'Not acepteed',
+      'In Consideration'   => 'In Consideration',
+      'Only send a letter'   => 'Only send a letter',
+    );
+
+    // collect all films
+    
+    $nodes = node_load_multiple($films_list);  
+    foreach ($films_list_full as $nid => $node) {
+    
+      $linkremove = l('remove', 'admin/removefilm/'.$node['film'] . '/festival/'.$fest->nid. '/tid/'.$node['tid']);
+      $author = user_load($nodes[$node['film']]->uid);
+      $csstext = 'white';               
+        if(empty($node['free'])){
+          $csstext = 'greentext';
+          $linkremove = '';
+          }
+        if($node['addby']){
+          $csstext = 'bluetext';
+          $linkremove = l('remove', 'admin/removefilm/'.$node['film'] . '/festival/'.$fest->nid. '/tid/'.$node['tid']);
+          }
+          
+            
+      $film_status = _get_params(unserialize($nodes[$node['film']]->field_submitted_to['und']['0']['value']) ,$fest->nid,$node['tid'], 'status');
+      $term_country = taxonomy_term_load($nodes[$node['film']]->field_category_country['und']['0']['tid']);
+      
+      $list[$node['film'].'-'.$node['tid']] = array(
+        'title' => array(
+          'data' => array(
+            '#type' => 'link',
+            '#title' => $nodes[$node['film']]->title,
+            '#href' => 'node/' . $node['film'],
+            '#attributes' => array('class' => array($csstext)),
+            ),
+          ),
+          'category' => array(
+            'data' => array(
+              '#type' => 'markup',
+              '#markup' => $film_cat['name'.$node['film'].'-'.$node['tid']],
+            )) , 
+          
+          $film_time, 
+          'country' => $term_country->name,
+          $film_status, 
+          $author->mail,           
+          );    
+    }
+    }                                
+    
+    // if user don't have any film
+    if($wrongfest == false){
+        
+          $form['form'] = array(
+            '#type'   => 'item',        
+            '#title'  => t("You don't have permissions to this page"),        
+            '#markup' => '<div>You don\'t have permissions to this page. </div>',
+          
+            );
+            
+    }else if(empty($list)){
+        
+          $form['form'] = array(
+            '#type'   => 'item',        
+            '#title'  => t('Missing film(s)'),        
+            '#markup' => '<div>We don\'t have any film(s). </div>',
+          
+            );
+            
+    }else{ 
+
+    
+        $form['#mylist_films'] = $list;
+        
+        $form["status_options"] = array(
+            "#type" => "select", 
+            "#title" => t("Select status."), 
+            "#options" => $items,
+            "#description" => t("Chosen status will apply to all checked film(s)"),
+            );
+
+          
+        $form['form'][] = array(    
+                '#type'   => 'item',                  
+                '#markup' => 'Check film you wish to enter on the festival <a href="/node/'.$fest->nid.'"><b>'.$fest->title.'</b></a>',// <b>"<a href="/node/'.$fest->nid.'">'.$fest->title .'</a>"</b>',      
+        ); 
+
+        
+        $header = array(
+        'title' => array('data' => t('Title'), 'field' => 'n.title'),
+        'category' => array('data' => t('Category')), 
+        t('Lenght'), 
+        'country' => array('data' => t('Country'), 'field' => 'n.country'),
+        t('Status'),             
+        t('email'),        
+        /*t('Operation')*/
+        );
+        
+        $form['checkboxes'] = array(
+          '#type' => 'tableselect',
+          '#header' => $header,
+          '#options' => $list,
+          '#empty' => 'No users were found.'
+        );
+        
+        $form['sendemail'] = array(
+          '#type' =>'checkbox',         
+          '#title' => t('Send email.'),
+        
+        );
+
+        $form['textemail'] = array( 
+          '#type' => 'text_format',             
+          '#description' => t('Send this email selecetd item(s)'),          
+          '#default_value' => '',
+          );
+                   
+        $form['actions']['submit'] = array(
+          '#type' => 'submit',
+          '#value' => t('Submit'),
+          '#submit' => array('festival_changestatus'),    
+        );
+        
+        
+    }
+
+    $form['#attached']['css'] = array(
+      drupal_get_path('module', 'festival') . '/cssstyle.css',
+    );
+  
+    return $form;
+}
+
+
+/**
+ * Helper function to determinate user role
+ */
+function festival_user_has_role($user, $roles = array()) {  
+
+global $user;
+  foreach ($roles as $role) {
+    if (in_array($role, $user->roles)) {
+      return TRUE;
+    }
+  }
+  return FALSE; 
+}
+
+/**
+ * Implements hook_cron().
+ *
+ */
+function festival_cron() {
+  if (variable_get('festival_cron', TRUE)) {
+    //festival_sendemail();
+  }
+}
